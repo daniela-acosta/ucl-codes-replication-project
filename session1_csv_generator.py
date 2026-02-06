@@ -49,6 +49,7 @@ def main():
                 reps = repetition_map[set_id]
                 for _ in range(reps):
                     rows.append({
+                        "Display": "Display 1",
                         "statement_set": set_id,
                         "statement": row["statement"],
                         "statement_id": row["statement_id"],
