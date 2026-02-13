@@ -17,7 +17,17 @@ n_new_sets = 4
 assert n_old_sets + n_new_sets == n_sets
 
 # Ideal/clean mean truth pattern (diminishing returns)
-mean_truth = {0: 3.64, 1: 4.26, 9: 4.70, 18: 4.80, 27: 4.87}
+# mean_truth = {0: 3.64, 1: 4.26, 9: 4.70, 18: 4.80, 27: 4.87}
+# sd_within = 0.35
+
+# Failed replication
+mean_truth = {
+    0: 3.60,
+    1: 3.65,
+    9: 4.00,
+    18: 4.40,
+    27: 4.80
+}
 sd_within = 0.35
 
 genders = ["female", "male", "other"]
@@ -128,6 +138,6 @@ print(df["truth_score"].value_counts().sort_index())
 # -----------------------------
 # Save
 # -----------------------------
-out_path = "ideal_counterbalanced.csv"
+out_path = "failed_counterbalanced.csv"
 df.to_csv(out_path, index=False)
 print("\nSaved:", out_path)
