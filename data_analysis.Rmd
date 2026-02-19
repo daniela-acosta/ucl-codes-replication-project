@@ -221,39 +221,52 @@ cell_matrix <- matrix("",
 
 for (i in seq_along(rep_levels)) {
   for (j in seq_along(rep_levels)) {
+
     if (i == j) {
       cell_matrix[i, j] <- "–"
+
     } else if (i < j) {
+
       a <- rep_levels[i]
       b <- rep_levels[j]
-      
-      # paper-style within-subject d using r-based SDdiff
+
+      # compute effect size
       d_val <- d_within_r(wide_means[[a]], wide_means[[b]])
+
+      # get Bonferroni p-value
       p_val <- get_p_bonf(a, b, pairs_bonf)
-      
-      star <- if (!is.na(p_val) && p_val < 0.05) "*" else ""
-      
-      # bold significant cells (LaTeX)
-      cell_txt <- sprintf("d = %.2f%s", d_val, star)
+
+      # format value
+      d_text <- sprintf("d = %.2f", d_val)
+
+      # add star if significant
       if (!is.na(p_val) && p_val < 0.05) {
-        cell_txt <- sprintf("\\\\textbf{%s}", cell_txt)
+        d_text <- paste0(d_text, "*")
       }
-      
-      cell_matrix[i, j] <- cell_txt
+
+      # bold if significant (LaTeX)
+      if (!is.na(p_val) && p_val < 0.05) {
+        d_text <- sprintf("\\textbf{%s}", d_text)
+      }
+
+      cell_matrix[i, j] <- d_text
     }
   }
 }
+
+
 
 d_table_formatted <- as.data.frame(cell_matrix)
 
 # Build header row for Ms and SDs like paper (as a 1-row table)
 msd_header <- desc_by_cond %>%
   mutate(
-    msd = sprintf("\\\\makecell{$M = %.2f$ \\\\ $SD = %.2f$}", M, SD)
+    msd = sprintf("\\makecell{M = %.2f \\\\ SD = %.2f}", M, SD)
   ) %>%
   select(repetition_factor, msd) %>%
   pivot_wider(names_from = repetition_factor, values_from = msd) %>%
   as.data.frame()
+
 
 # Combine into a single display table:
 # First row: Ms/SDs
