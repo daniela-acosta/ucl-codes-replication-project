@@ -12,6 +12,7 @@ library(emmeans)
 library(kableExtra)
 
 theme_set(theme_bw(base_size = 15) + theme(legend.position = "bottom"))
+afex::afex_options(type = 3)
 ```
 
 ```{r}
@@ -20,14 +21,30 @@ theme_set(theme_bw(base_size = 15) + theme(legend.position = "bottom"))
 # -----------------------------
 truth_ratings <- read_csv("ideal_counterbalanced.csv") %>%
   mutate(
-    participant_id      = factor(participant_id),
-    repetition_numeric  = as.numeric(repetition_times),
-    repetition_factor   = factor(repetition_times, levels = c(0, 1, 9, 18, 27)),
-    truth_score         = as.numeric(truth_score)  # keep numeric for means
+    participant_id     = factor(participant_id),
+    repetition_numeric = as.numeric(repetition_times),
+    repetition_factor  = factor(repetition_times, levels = c(0, 1, 9, 18, 27)),
+    truth_score        = as.numeric(truth_score)
   )
 
+rep_levels <- c("0", "1", "9", "18", "27")
+
 # -----------------------------
-# 1) Age stats
+# Helper: within-subject d (paper footnote)
+# d = |m1 - m2| / sqrt(s1^2 + s2^2 - 2*r*s1*s2)
+# -----------------------------
+d_within_r <- function(x, y) {
+  ok <- complete.cases(x, y)
+  x <- x[ok]; y <- y[ok]
+  m1 <- mean(x); m2 <- mean(y)
+  s1 <- sd(x);   s2 <- sd(y)
+  r  <- cor(x, y)
+  denom <- sqrt(s1^2 + s2^2 - 2 * r * s1 * s2)
+  abs(m1 - m2) / denom
+}
+
+# -----------------------------
+# 1) Demographics: age summary
 # -----------------------------
 age_summary <- truth_ratings %>%
   distinct(participant_id, age) %>%
@@ -42,24 +59,7 @@ age_summary <- truth_ratings %>%
 age_summary
 
 # -----------------------------
-# Helper: within-subject d as described in paper footnote
-# d = |m1 - m2| / sqrt(s1^2 + s2^2 - 2*r*s1*s2)
-# where r is the correlation between paired measures.
-# -----------------------------
-d_within_r <- function(x, y) {
-  x <- x[complete.cases(x, y)]
-  y <- y[complete.cases(x, y)]
-  m1 <- mean(x); m2 <- mean(y)
-  s1 <- sd(x);   s2 <- sd(y)
-  r  <- cor(x, y)
-  denom <- sqrt(s1^2 + s2^2 - 2*r*s1*s2)
-  abs(m1 - m2) / denom
-}
-
-# -----------------------------
-# 2) Matched-pair t-test:
-#    (a) repeated statements (collapsed across repetition>0)
-#    (b) never-before-seen statements (repetition==0)
+# 2) Matched-pairs t-test: repeated (collapsed across >0) vs new (0)
 # -----------------------------
 by_participant_cond <- truth_ratings %>%
   group_by(participant_id, repetition_numeric) %>%
@@ -71,7 +71,6 @@ by_participant_repeated_vs_new <- by_participant_cond %>%
   summarise(mean_truth = mean(mean_truth, na.rm = TRUE), .groups = "drop") %>%
   pivot_wider(names_from = item_type, values_from = mean_truth)
 
-# Paired t-test (repeated vs new)
 tt_repeated_vs_new <- t.test(
   by_participant_repeated_vs_new$repeated,
   by_participant_repeated_vs_new$new,
@@ -80,7 +79,6 @@ tt_repeated_vs_new <- t.test(
 
 tt_repeated_vs_new
 
-# Effect size d in the paper’s style (within-subject using r / SDdiff closed form)
 d_repeated_vs_new <- d_within_r(
   by_participant_repeated_vs_new$repeated,
   by_participant_repeated_vs_new$new
@@ -88,34 +86,29 @@ d_repeated_vs_new <- d_within_r(
 
 d_repeated_vs_new
 
-# Report the Ms/SDs 
 msd_repeated_new <- by_participant_repeated_vs_new %>%
   summarise(
-    M_repeated = mean(repeated, na.rm = TRUE),
+    M_repeated  = mean(repeated, na.rm = TRUE),
     SD_repeated = sd(repeated, na.rm = TRUE),
-    M_new = mean(new, na.rm = TRUE),
-    SD_new = sd(new, na.rm = TRUE)
+    M_new       = mean(new, na.rm = TRUE),
+    SD_new      = sd(new, na.rm = TRUE)
   )
 
 msd_repeated_new
 
 # -----------------------------
-# 3) Correlations per participant:
-#    mean truth ratings across repetition conditions vs
-#    (a) repetitions (0,1,9,18,27)
-#    (b) log(repetitions + 1)  [log1p]
+# 3) Per-participant correlations: linear vs log(reps + 1)
 # -----------------------------
-# Create per-participant vector of condition means
 wide_means <- by_participant_cond %>%
   mutate(rep_chr = as.character(repetition_numeric)) %>%
   select(participant_id, rep_chr, mean_truth) %>%
   pivot_wider(names_from = rep_chr, values_from = mean_truth)
 
-rep_levels <- c("0","1","9","18","27")
+stopifnot(all(rep_levels %in% names(wide_means)))
+
 rep_num <- as.numeric(rep_levels)
 rep_log <- log(rep_num + 1)
 
-# Compute r_linear and r_log for each participant using their 5 condition means
 corrs <- wide_means %>%
   rowwise() %>%
   mutate(
@@ -130,7 +123,6 @@ corrs <- wide_means %>%
   ) %>%
   ungroup()
 
-# Summary like paper (mean r, SD, range, % > 0)
 corr_summary <- corrs %>%
   summarise(
     mean_r_linear = mean(r_linear, na.rm = TRUE),
@@ -138,7 +130,7 @@ corr_summary <- corrs %>%
     min_r_linear  = min(r_linear, na.rm = TRUE),
     max_r_linear  = max(r_linear, na.rm = TRUE),
     prop_pos_linear = mean(r_linear > 0, na.rm = TRUE),
-    
+
     mean_r_log = mean(r_log, na.rm = TRUE),
     sd_r_log   = sd(r_log, na.rm = TRUE),
     min_r_log  = min(r_log, na.rm = TRUE),
@@ -148,23 +140,64 @@ corr_summary <- corrs %>%
 
 corr_summary
 
-# Matched-pair t-test: is |r_log| greater than |r_linear|?
-# (Paper compares magnitudes; if you prefer raw r, remove abs().)
+# Number of participants with r_linear > 0
+n_linear_pos <- sum(corrs$r_linear > 0, na.rm = TRUE)
+
+# Total valid participants (non-missing r_linear)
+n_total <- sum(!is.na(corrs$r_linear))
+
+# Proportion (often reported in papers)
+prop_linear_pos <- n_linear_pos / n_total
+
+n_linear_pos
+n_total
+prop_linear_pos
+
+
 tt_corr <- t.test(abs(corrs$r_log), abs(corrs$r_linear), paired = TRUE)
 tt_corr
 
-# Paired dz for this comparison (common reporting for paired t)
 diff_r <- abs(corrs$r_log) - abs(corrs$r_linear)
 d_dz_corr <- mean(diff_r, na.rm = TRUE) / sd(diff_r, na.rm = TRUE)
 d_dz_corr
 
-# -----------------------------
-# 4) RM ANOVA and Bonferroni-adjusted pairwise comparisons
-# -----------------------------
-afex::afex_options(type = 3)
+##
+# graph
+##
 
+# Compute means + CI using numeric repetitions
+means_plot <- truth_ratings %>%
+  group_by(repetition_numeric) %>%
+  summarise(
+    mean_truth = mean(truth_score, na.rm = TRUE),
+    se = sd(truth_score, na.rm = TRUE) / sqrt(n()),
+    ci95 = qt(0.975, df = n() - 1) * se,
+    .groups = "drop"
+  )
+
+# Plot with numeric scale + regular ticks
+ggplot(means_plot, aes(x = repetition_numeric, y = mean_truth)) +
+  geom_point(size = 3) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_truth - ci95,
+                    ymax = mean_truth + ci95),
+                width = 0.5) +
+  scale_x_continuous(
+    breaks = seq(0, 27, by = 3)
+  ) +
+  labs(
+    x = "Number of repetitions",
+    y = "Mean truth rating"
+  ) +
+  theme_classic()
+
+
+
+# -----------------------------
+# 4) RM ANOVA + Bonferroni pairwise comparisons
+# -----------------------------
 aov_rm <- aov_car(
-  truth_score ~ repetition_factor + Error(participant_id/repetition_factor),
+  truth_score ~ repetition_factor + Error(participant_id / repetition_factor),
   data = truth_ratings,
   factorize = FALSE
 )
@@ -173,11 +206,13 @@ aov_rm
 
 emm_rep <- emmeans(aov_rm, ~ repetition_factor)
 
-# Bonferroni pairwise comparisons
 pairs_bonf <- pairs(emm_rep, adjust = "bonferroni") %>%
   summary(infer = TRUE) %>%
   as.data.frame()
 
+pairs_bonf
+
+# Build robust numeric p-value lookup for (a,b) keys like "0||1"
 pairs_bonf2 <- pairs_bonf %>%
   tidyr::extract(
     contrast,
@@ -189,11 +224,10 @@ pairs_bonf2 <- pairs_bonf %>%
     a = stringr::str_extract(a_raw, "\\d+"),
     b = stringr::str_extract(b_raw, "\\d+"),
     key = paste(a, b, sep = "||"),
-    p_num = as.numeric(p.value)   # force numeric
+    p_num = as.numeric(p.value)
   )
 
 p_lookup <- setNames(pairs_bonf2$p_num, pairs_bonf2$key)
-
 
 get_p_bonf <- function(a, b, lookup) {
   key1 <- paste(a, b, sep = "||")
@@ -208,9 +242,9 @@ get_p_bonf <- function(a, b, lookup) {
   NA_real_
 }
 
-
-
-# Descriptives for header row
+# -----------------------------
+# 5) Table 2-style output (M/SD header + triangular d matrix)
+# -----------------------------
 desc_by_cond <- truth_ratings %>%
   group_by(repetition_factor) %>%
   summarise(
@@ -226,10 +260,6 @@ msd_header <- desc_by_cond %>%
   pivot_wider(names_from = repetition_factor, values_from = msd) %>%
   as.data.frame()
 
-# Ensure expected columns exist in wide_means
-stopifnot(all(rep_levels %in% names(wide_means)))
-
-# Build triangular matrix (upper triangle) with bold for significant cells
 cell_matrix <- matrix("",
   nrow = length(rep_levels),
   ncol = length(rep_levels),
@@ -238,12 +268,9 @@ cell_matrix <- matrix("",
 
 for (i in seq_along(rep_levels)) {
   for (j in seq_along(rep_levels)) {
-
     if (i == j) {
       cell_matrix[i, j] <- "–"
-
     } else if (i < j) {
-
       a <- rep_levels[i]
       b <- rep_levels[j]
 
@@ -261,11 +288,11 @@ for (i in seq_along(rep_levels)) {
 
 d_table_formatted <- as.data.frame(cell_matrix)
 
-# Combine header + matrix into one table
 final_table <- bind_rows(
   tibble(` ` = "Ms and SDs of truth ratings") %>% bind_cols(msd_header),
   tibble(` ` = rownames(d_table_formatted)) %>% bind_cols(d_table_formatted)
-)
+) %>%
+  mutate(across(everything(), as.character))
 
 knitr::kable(final_table, format = "latex", booktabs = TRUE,
              escape = FALSE, align = "lccccc") %>%
