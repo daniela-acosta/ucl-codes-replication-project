@@ -173,20 +173,44 @@ aov_rm
 
 emm_rep <- emmeans(aov_rm, ~ repetition_factor)
 
+# Bonferroni pairwise comparisons
 pairs_bonf <- pairs(emm_rep, adjust = "bonferroni") %>%
   summary(infer = TRUE) %>%
   as.data.frame()
 
-pairs_bonf
+pairs_bonf2 <- pairs_bonf %>%
+  tidyr::extract(
+    contrast,
+    into = c("a_raw", "b_raw"),
+    regex = "^\\s*(.*?)\\s*-\\s*(.*?)\\s*$",
+    remove = FALSE
+  ) %>%
+  mutate(
+    a = stringr::str_extract(a_raw, "\\d+"),
+    b = stringr::str_extract(b_raw, "\\d+"),
+    key = paste(a, b, sep = "||"),
+    p_num = as.numeric(p.value)   # force numeric
+  )
 
-# -----------------------------
-# 5) Table 2-style output:
-#    - row 1: M and SD per condition
-#    - lower triangle: d values (paper-style within-subject d)
-#    - star for Bonferroni p < .05
-# -----------------------------
+p_lookup <- setNames(pairs_bonf2$p_num, pairs_bonf2$key)
 
-# Condition-level descriptives (Session 2 truth ratings by repetition condition)
+
+get_p_bonf <- function(a, b, lookup) {
+  key1 <- paste(a, b, sep = "||")
+  key2 <- paste(b, a, sep = "||")
+
+  p1 <- lookup[key1]
+  if (length(p1) == 1 && !is.na(p1)) return(unname(p1))
+
+  p2 <- lookup[key2]
+  if (length(p2) == 1 && !is.na(p2)) return(unname(p2))
+
+  NA_real_
+}
+
+
+
+# Descriptives for header row
 desc_by_cond <- truth_ratings %>%
   group_by(repetition_factor) %>%
   summarise(
@@ -196,27 +220,20 @@ desc_by_cond <- truth_ratings %>%
   ) %>%
   mutate(repetition_factor = as.character(repetition_factor))
 
-desc_by_cond
+msd_header <- desc_by_cond %>%
+  mutate(msd = sprintf("\\makecell{M = %.2f \\\\ SD = %.2f}", M, SD)) %>%
+  select(repetition_factor, msd) %>%
+  pivot_wider(names_from = repetition_factor, values_from = msd) %>%
+  as.data.frame()
 
-# Function to fetch Bonferroni p for pair a vs b from emmeans contrasts
-get_p_bonf <- function(a, b, pairs_df) {
-  c1 <- paste(a, "-", b)
-  c2 <- paste(b, "-", a)
-  p <- pairs_df$p.value[pairs_df$contrast == c1]
-  if (length(p) == 0) p <- pairs_df$p.value[pairs_df$contrast == c2]
-  if (length(p) == 0) return(NA_real_)
-  p
-}
-
-# Build wide participant means (already have wide_means), ensure columns exist
-# wide_means columns are "0","1","9","18","27" as characters
+# Ensure expected columns exist in wide_means
 stopifnot(all(rep_levels %in% names(wide_means)))
 
-# Build triangular matrix of formatted cells
+# Build triangular matrix (upper triangle) with bold for significant cells
 cell_matrix <- matrix("",
-                      nrow = length(rep_levels),
-                      ncol = length(rep_levels),
-                      dimnames = list(rep_levels, rep_levels)
+  nrow = length(rep_levels),
+  ncol = length(rep_levels),
+  dimnames = list(rep_levels, rep_levels)
 )
 
 for (i in seq_along(rep_levels)) {
@@ -230,54 +247,28 @@ for (i in seq_along(rep_levels)) {
       a <- rep_levels[i]
       b <- rep_levels[j]
 
-      # compute effect size
       d_val <- d_within_r(wide_means[[a]], wide_means[[b]])
+      p_val <- get_p_bonf(a, b, p_lookup)
+      is_sig <- !is.na(p_val) && p_val < 0.05
 
-      # get Bonferroni p-value
-      p_val <- get_p_bonf(a, b, pairs_bonf)
+      cell_txt <- sprintf("d = %.2f%s", d_val, if (is_sig) "*" else "")
+      if (is_sig) cell_txt <- paste0("\\textbf{", cell_txt, "}")
 
-      # format value
-      d_text <- sprintf("d = %.2f", d_val)
-
-      # add star if significant
-      if (!is.na(p_val) && p_val < 0.05) {
-        d_text <- paste0(d_text, "*")
-      }
-
-      # bold if significant (LaTeX)
-      if (!is.na(p_val) && p_val < 0.05) {
-        d_text <- sprintf("\\textbf{%s}", d_text)
-      }
-
-      cell_matrix[i, j] <- d_text
+      cell_matrix[i, j] <- cell_txt
     }
   }
 }
 
-
-
 d_table_formatted <- as.data.frame(cell_matrix)
 
-# Build header row for Ms and SDs like paper (as a 1-row table)
-msd_header <- desc_by_cond %>%
-  mutate(
-    msd = sprintf("\\makecell{M = %.2f \\\\ SD = %.2f}", M, SD)
-  ) %>%
-  select(repetition_factor, msd) %>%
-  pivot_wider(names_from = repetition_factor, values_from = msd) %>%
-  as.data.frame()
-
-
-# Combine into a single display table:
-# First row: Ms/SDs
-# Then the d-matrix (with row labels)
+# Combine header + matrix into one table
 final_table <- bind_rows(
   tibble(` ` = "Ms and SDs of truth ratings") %>% bind_cols(msd_header),
   tibble(` ` = rownames(d_table_formatted)) %>% bind_cols(d_table_formatted)
 )
 
-# Print for PDF knitting (escape=FALSE to allow LaTeX bold)
-knitr::kable(final_table, format = "latex", booktabs = TRUE, escape = FALSE, align = "lccccc") %>%
-  kable_styling(latex_options = c("hold_position")) %>%
-  add_header_above(c(" " = 1, "Number of Session 1 repetitions" = 5))
+knitr::kable(final_table, format = "latex", booktabs = TRUE,
+             escape = FALSE, align = "lccccc") %>%
+  kableExtra::kable_styling(latex_options = c("hold_position")) %>%
+  kableExtra::add_header_above(c(" " = 1, "Number of Session 1 repetitions" = 5))
 ```
