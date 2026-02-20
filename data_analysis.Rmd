@@ -19,7 +19,7 @@ afex::afex_options(type = 3)
 # -----------------------------
 # Load + prepare data
 # -----------------------------
-truth_ratings <- read_csv("ideal_counterbalanced.csv") %>%
+truth_ratings <- read_csv("final_failed.csv") %>%
   mutate(
     participant_id     = factor(participant_id),
     repetition_numeric = as.numeric(repetition_times),
@@ -46,6 +46,13 @@ d_within_r <- function(x, y) {
 # -----------------------------
 # 1) Demographics: age summary
 # -----------------------------
+gender_summary <- truth_ratings %>% 
+  distinct(participant_id, gender) %>%
+  count(gender)
+
+gender_summary
+
+
 age_summary <- truth_ratings %>%
   distinct(participant_id, age) %>%
   summarise(
@@ -106,8 +113,8 @@ wide_means <- by_participant_cond %>%
 
 stopifnot(all(rep_levels %in% names(wide_means)))
 
-rep_num <- as.numeric(rep_levels)
-rep_log <- log(rep_num + 1)
+rep_num <- as.numeric(rep_levels) + 1
+rep_log <- log(rep_num)
 
 corrs <- wide_means %>%
   rowwise() %>%
@@ -138,7 +145,7 @@ corr_summary <- corrs %>%
     prop_pos_log = mean(r_log > 0, na.rm = TRUE)
   )
 
-corr_summary
+as.data.frame(corr_summary)
 
 # Number of participants with r_linear > 0
 n_linear_pos <- sum(corrs$r_linear > 0, na.rm = TRUE)
@@ -183,13 +190,16 @@ ggplot(means_plot, aes(x = repetition_numeric, y = mean_truth)) +
                     ymax = mean_truth + ci95),
                 width = 0.5) +
   scale_x_continuous(
-    breaks = seq(0, 27, by = 3)
+    breaks = seq(0, 27, by = 3),
+    limits = c(0, 27)
   ) +
+  coord_cartesian(ylim = c(3, 5.5)) + # update this when changing variation
   labs(
     x = "Number of repetitions",
     y = "Mean truth rating"
   ) +
   theme_classic()
+
 
 
 

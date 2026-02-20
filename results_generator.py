@@ -6,7 +6,7 @@ np.random.seed(42)
 # -----------------------------
 # Parameters (Exp 2 structure)
 # -----------------------------
-n_participants = 200          # 8 participants -> perfectly balanced across 8 counterbalance versions (1 per version)
+n_participants = 200          
 n_sets = 8                  # 8 sets of statements (4 old, 4 new per participant)
 statements_per_set = 8
 n_statements_total = n_sets * statements_per_set  # 64
@@ -16,19 +16,34 @@ n_old_sets = 4
 n_new_sets = 4
 assert n_old_sets + n_new_sets == n_sets
 
-# Ideal/clean mean truth pattern (diminishing returns)
-# mean_truth = {0: 3.64, 1: 4.26, 9: 4.70, 18: 4.80, 27: 4.87}
-# sd_within = 0.35
-
 # Failed replication
+# use y = mx + b (line equation) to calculate slope and then values for each rep level
+b = 3.64 # min truth rating is the intercept bc y = 0 (reps=0)
+max_y = 4.79 # max truth rating
+max_x = 27 # max reps
 mean_truth = {
-    0: 3.60,
-    1: 3.65,
-    9: 4.00,
-    18: 4.40,
-    27: 4.80
+    0: 0,
+    1: 0,
+    9: 0,
+    18: 0,
+    27: 0
 }
-sd_within = 0.35
+slope = (max_y - b) / max_x
+for i in [0] + repeated_levels:
+    mean_truth[i] = round(slope * i + b, 2)
+mean_truth[1] = round(mean_truth[1] + slope * 0.6, 2) # this increases the first jump a little to ensure it is statistically significant
+print("Mean truth", mean_truth)
+
+# Successful replication
+# mean_truth = {
+#     0: 3.64,
+#     1: 4.26,
+#     9: 4.76,
+#     18: 4.72,
+#     27: 4.79
+# }
+
+sd_within = 0.9 # picked 0.9 for succesful replication, X for failed one
 
 genders = ["female", "male", "other"]
 edu_levels = ["high_school", "some_college", "undergrad", "postgrad"]
@@ -88,7 +103,10 @@ def gen_truth(rep: int) -> int:
 
 for pid, cb_version in zip(participants, versions):
     age = int(np.random.randint(18, 36))
-    gender = str(np.random.choice(genders))
+    gender = str(np.random.choice(
+        ["female", "male", "other"],
+        p=[0.475, 0.475, 0.05]
+    ))
     edu = str(np.random.choice(edu_levels))
 
     mapping = version_maps[int(cb_version)]  # set_id -> repetition_times
@@ -138,6 +156,6 @@ print(df["truth_score"].value_counts().sort_index())
 # -----------------------------
 # Save
 # -----------------------------
-out_path = "failed_counterbalanced.csv"
+out_path = "new_failed_1.csv"
 df.to_csv(out_path, index=False)
 print("\nSaved:", out_path)
