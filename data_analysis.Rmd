@@ -19,7 +19,7 @@ afex::afex_options(type = 3)
 # -----------------------------
 # Load + prepare data
 # -----------------------------
-truth_ratings <- read_csv("final_failed.csv") %>%
+truth_ratings <- read_csv("final_successful.csv") %>%
   mutate(
     participant_id     = factor(participant_id),
     repetition_numeric = as.numeric(repetition_times),
@@ -104,7 +104,7 @@ msd_repeated_new <- by_participant_repeated_vs_new %>%
 msd_repeated_new
 
 # -----------------------------
-# 3) Per-participant correlations: linear vs log(reps + 1)
+# 3) Per-participant correlations: linear vs log (reps + 1 for both)
 # -----------------------------
 wide_means <- by_participant_cond %>%
   mutate(rep_chr = as.character(repetition_numeric)) %>%
