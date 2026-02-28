@@ -1,1 +1,16 @@
-/venv
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# LaTeX / RMarkdown build files
+*.log
+*.aux
+*.out
+*.toc
