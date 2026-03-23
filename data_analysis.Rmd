@@ -10,6 +10,9 @@ library(tidyverse)
 library(afex)
 library(emmeans)
 library(kableExtra)
+library(knitr)
+library(dplyr)
+library(stringr)
 
 theme_set(theme_bw(base_size = 15) + theme(legend.position = "bottom"))
 afex::afex_options(type = 3)
@@ -66,7 +69,18 @@ age_summary <- truth_ratings %>%
 age_summary
 
 # -----------------------------
-# 2) Matched-pairs t-test: repeated (collapsed across >0) vs new (0)
+# 2) Remove users with failed attention checks
+# -----------------------------
+
+truth_ratings <- truth_ratings %>%
+  filter(!participant_id %in% (
+    truth_ratings %>%
+      filter(statement_id == "101" & truth_score != 2) %>%
+      pull(participant_id)
+  ))
+
+# -----------------------------
+# 3) Matched-pairs t-test: repeated (collapsed across >0) vs new (0)
 # -----------------------------
 by_participant_cond <- truth_ratings %>%
   group_by(participant_id, repetition_numeric) %>%
@@ -104,7 +118,7 @@ msd_repeated_new <- by_participant_repeated_vs_new %>%
 msd_repeated_new
 
 # -----------------------------
-# 3) Per-participant correlations: linear vs log (reps + 1 for both)
+# 4) Per-participant correlations: linear vs log (reps + 1 for both)
 # -----------------------------
 wide_means <- by_participant_cond %>%
   mutate(rep_chr = as.character(repetition_numeric)) %>%
@@ -193,7 +207,7 @@ ggplot(means_plot, aes(x = repetition_numeric, y = mean_truth)) +
     breaks = seq(0, 27, by = 3),
     limits = c(0, 27)
   ) +
-  coord_cartesian(ylim = c(3, 5.5)) + # update this when changing variation
+  coord_cartesian(ylim = c(3, 5.5)) +
   labs(
     x = "Number of repetitions",
     y = "Mean truth rating"
@@ -204,7 +218,7 @@ ggplot(means_plot, aes(x = repetition_numeric, y = mean_truth)) +
 
 
 # -----------------------------
-# 4) RM ANOVA + Bonferroni pairwise comparisons
+# 5) RM ANOVA + Bonferroni pairwise comparisons
 # -----------------------------
 aov_rm <- aov_car(
   truth_score ~ repetition_factor + Error(participant_id / repetition_factor),
@@ -222,7 +236,32 @@ pairs_bonf <- pairs(emm_rep, adjust = "bonferroni") %>%
 
 pairs_bonf
 
-# Build robust numeric p-value lookup for (a,b) keys like "0||1"
+pairs_table <- as.data.frame(pairs_bonf) %>%
+  filter(contrast %in% c(
+    "X0 - X1",
+    "X1 - X9",
+    "X9 - X18",
+    "X18 - X27"
+  )) %>%
+  mutate(
+    contrast = str_replace(contrast, " - ", " vs "),
+    contrast = str_replace_all(contrast, "X", ""),
+    estimate = round(abs(estimate), 2),
+    sig = p.value < 0.05,
+    estimate = ifelse(sig,
+                      paste0("**", estimate, "*", "**"),
+                      as.character(estimate))
+  ) %>%
+  select(`Repetition Comparisons` = contrast,
+         `Mean Difference` = estimate)
+
+kable(
+  pairs_table,
+  caption = "Mean differences in truth ratings across repetition conditions",
+  escape = FALSE
+)
+
+# Build numeric p-value lookup for (a,b) keys like "0||1"
 pairs_bonf2 <- pairs_bonf %>%
   tidyr::extract(
     contrast,
@@ -253,7 +292,7 @@ get_p_bonf <- function(a, b, lookup) {
 }
 
 # -----------------------------
-# 5) Table 2-style output (M/SD header + triangular d matrix)
+# 6) Table 2-style output (M/SD header + triangular d matrix)
 # -----------------------------
 desc_by_cond <- truth_ratings %>%
   group_by(repetition_factor) %>%
